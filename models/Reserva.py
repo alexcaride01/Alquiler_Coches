@@ -1,15 +1,14 @@
+from __future__ import annotations
 from datetime import datetime
+from uuid import uuid4, UUID
+
 
 class Reserva:
     # Clase que representa una reserva dentro del sistema de alquiler. En ella gestionamos la relación entre un cliente, un vehículo y las fechas del alquiler.
 
-
-    _contador_id = 1  # Usamos un contador para asignar IDs únicos a cada reserva
-
     def __init__(self, cliente, vehiculo, fecha_inicio: str, fecha_fin: str, tarifa, sucursal_recogida, sucursal_devolucion):
         # Asignamos un ID incremental a la reserva
-        self.id = Reserva._contador_id
-        Reserva._contador_id += 1
+        self.id: UUID = uuid4()
 
         # Asociamos el cliente y el vehículo implicados
         self.cliente = cliente

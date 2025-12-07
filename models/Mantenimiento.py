@@ -1,15 +1,15 @@
+from __future__ import annotations
 from datetime import datetime
+from uuid import uuid4, UUID
+
 
 class Mantenimiento:
 
     # Clase que representa una operación de mantenimiento o reparación de un vehículo. Nos permite registrar cuándo se realiza, qué se ha hecho y el coste asociado.
 
-    _contador_id = 1  # Contador para asignar IDs únicos a los mantenimientos
-
     def __init__(self, vehiculo, motivo: str, fecha_inicio: str, fecha_fin: str, coste: float, tipo: str = "REVISIÓN"):
         # Asignamos un ID incremental a cada registro de mantenimiento
-        self.id = Mantenimiento._contador_id
-        Mantenimiento._contador_id += 1
+        self.id: UUID = uuid4()
 
         # Asociamos el mantenimiento a un vehículo concreto
         self.vehiculo = vehiculo

@@ -1,20 +1,20 @@
+from __future__ import annotations
+from uuid import uuid4, UUID
+
+
 class Tarifa:
 
     # Clase que representa una tarifa dentro del sistema de alquiler. Con ella gestionamos los precios diarios según el tipo de vehículo y las condiciones del alquiler.
-    
-
-    _contador_id = 1  # Llevamos un contador para asignar IDs únicos a las tarifas
 
     def __init__(self, nombre: str, categoria: str, precio_diario: float,
                  km_incluidos: float = 300.0, coste_km_extra: float = 0.10,
                  recargo_retraso: float = 20.0, penalizacion_comb: float = 30.0):
         # Asignamos un identificador a la tarifa
-        self.id = Tarifa._contador_id
-        Tarifa._contador_id += 1
+        self.id: UUID = uuid4()
 
         # Guardamos los datos principales
         self.nombre = nombre.strip()
-        self.categoria = categoria.strip()  # Ejemplo: “Económico”, “SUV”, “Premium”
+        self.categoria = categoria.strip()  # Ejemplo: "Económico", "SUV", "Premium"
         self.precio_diario = precio_diario
         self.km_incluidos = km_incluidos
         self.coste_km_extra = coste_km_extra

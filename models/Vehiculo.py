@@ -1,15 +1,15 @@
+from __future__ import annotations
+from uuid import uuid4, UUID
+
+
 class Vehiculo:
     # Clase base que representa un vehículo dentro de nuestro sistema de alquiler.
     # Aquí reunimos la información general de cualquier vehículo y las funciones que nos permiten controlar su estado y kilometraje.
-    
-
-    _contador_id = 1
 
     def __init__(self, matricula: str, marca: str, modelo: str, año: int,
                  categoria: str, km: float, sucursal=None, estado: str = "DISPONIBLE"):
         # Asignamos un ID único a cada vehículo que creemos
-        self.id = Vehiculo._contador_id
-        Vehiculo._contador_id += 1
+        self.id: UUID = uuid4()
 
         # Guardamos los datos principales del vehículo
         self.matricula = matricula.strip()
@@ -51,6 +51,7 @@ class Vehiculo:
 
 
 # ------- Subclases de Vehículo -------
+
 
 class Coche(Vehiculo):
     # Creamos una subclase para coches, que hereda de Vehículo

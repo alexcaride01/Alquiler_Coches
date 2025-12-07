@@ -1,12 +1,13 @@
+from __future__ import annotations
+from uuid import uuid4, UUID
+
+
 class Usuario:
     # Clase base que representa a cualquier usuario del sistema de alquiler. Aquí guardamos la información general y el comportamiento común a clientes y administradores.
 
-    _contador_id = 1  # Llevamos un contador para asignar IDs únicos
-
     def __init__(self, nombre: str, email: str):
         # Asignamos un identificador único automáticamente
-        self.id = Usuario._contador_id
-        Usuario._contador_id += 1
+        self.id: UUID = uuid4()
 
         # Guardamos los datos básicos del usuario
         self.nombre = nombre.strip()

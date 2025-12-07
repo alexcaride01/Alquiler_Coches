@@ -1,12 +1,13 @@
+from __future__ import annotations
+from uuid import uuid4, UUID
+
+
 class Sucursal:
     # Clase que representa una sucursal dentro del sistema de alquiler. Cada sucursal tiene su propio inventario de vehículos y gestiona las reservas locales.
 
-    _contador_id = 1  # Contador para generar identificadores únicos
-
     def __init__(self, nombre: str, direccion: str, telefono: str):
         # Asignamos un ID incremental a cada sucursal
-        self.id = Sucursal._contador_id
-        Sucursal._contador_id += 1
+        self.id: UUID = uuid4()
 
         # Guardamos los datos principales de la sucursal
         self.nombre = nombre.strip()
@@ -19,7 +20,7 @@ class Sucursal:
 
         # Validamos los datos básicos
         if not self.nombre:
-            raise ValueError("El nombre de la sucursal no puede estar vacío.")
+            raise ValueError("El nombre de la sucursal no puede estar vacía.")
         if not self.direccion:
             raise ValueError("La dirección no puede estar vacía.")
         if not self.telefono:

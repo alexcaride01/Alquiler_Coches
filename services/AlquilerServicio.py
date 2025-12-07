@@ -1,3 +1,7 @@
+from __future__ import annotations
+from typing import Dict
+from uuid import UUID
+
 from models.Usuario import Usuario, Cliente, Administrador
 from models.Vehiculo import Vehiculo, Coche, Moto, Furgoneta
 from models.Reserva import Reserva
@@ -7,17 +11,16 @@ from models.Mantenimiento import Mantenimiento
 
 
 class AlquilerServicio:
-    # Clase principal del sistema. Desde aquí gestionamos usuarios, vehículos,ctarifas, reservas, sucursales y mantenimientos.
-    
+    # Clase principal del sistema. Desde aquí gestionamos usuarios, vehículos, tarifas, reservas, sucursales y mantenimientos.
 
     def __init__(self):
         # Creamos diccionarios para organizar los datos de forma sencilla
-        self.usuarios = {}        # id -> Usuario
-        self.vehiculos = {}       # id -> Vehículo
-        self.reservas = {}        # id -> Reserva
-        self.sucursales = {}      # id -> Sucursal
-        self.tarifas = {}         # id -> Tarifa
-        self.mantenimientos = {}  # id -> Mantenimiento
+        self.usuarios: Dict[UUID, Usuario] = {}        # UUID -> Usuario
+        self.vehiculos: Dict[UUID, Vehiculo] = {}      # UUID -> Vehículo
+        self.reservas: Dict[UUID, Reserva] = {}        # UUID -> Reserva
+        self.sucursales: Dict[UUID, Sucursal] = {}     # UUID -> Sucursal
+        self.tarifas: Dict[UUID, Tarifa] = {}          # UUID -> Tarifa
+        self.mantenimientos: Dict[UUID, Mantenimiento] = {}  # UUID -> Mantenimiento
 
     # ---------- USUARIOS ----------
     def registrar_usuario(self, tipo: str, nombre: str, email: str, licencia=None, direccion=None):
@@ -34,9 +37,12 @@ class AlquilerServicio:
         self.usuarios[usuario.id] = usuario
         return usuario
 
-    def obtener_usuario(self, usuario_id: int):
+    def obtener_usuario(self, usuario_id: UUID):
         # Devolvemos un usuario por su ID
-        return self.usuarios.get(usuario_id)
+        usuario = self.usuarios.get(usuario_id)
+        if not usuario:
+            raise ValueError("Usuario no encontrado.")
+        return usuario
 
     # ---------- SUCURSALES ----------
     def agregar_sucursal(self, nombre: str, direccion: str, telefono: str):
@@ -66,6 +72,13 @@ class AlquilerServicio:
         sucursal.agregar_vehiculo(vehiculo)
         return vehiculo
 
+    def obtener_vehiculo(self, vehiculo_id: UUID):
+        # Devolvemos un vehículo por su ID
+        vehiculo = self.vehiculos.get(vehiculo_id)
+        if not vehiculo:
+            raise ValueError("Vehículo no encontrado.")
+        return vehiculo
+
     def listar_vehiculos_disponibles(self):
         # Mostramos los vehículos disponibles de todas las sucursales
         return [v for v in self.vehiculos.values() if v.estado == "DISPONIBLE"]
@@ -88,12 +101,12 @@ class AlquilerServicio:
         raise ValueError("No existe una tarifa para esa categoría.")
 
     # ---------- RESERVAS ----------
-    def realizar_reserva(self, cliente_id: int, vehiculo_id: int,
-                         fecha_inicio: str, fecha_fin: str, id_sucursal_devolucion: int):
+    def realizar_reserva(self, cliente_id: UUID, vehiculo_id: UUID,
+                         fecha_inicio: str, fecha_fin: str, id_sucursal_devolucion: UUID):
         # Creamos una nueva reserva si el vehículo está disponible
         cliente = self.usuarios.get(cliente_id)
         vehiculo = self.vehiculos.get(vehiculo_id)
-        sucursal_recogida = vehiculo.sucursal
+        sucursal_recogida = vehiculo.sucursal if vehiculo else None
         sucursal_devolucion = self.sucursales.get(id_sucursal_devolucion)
 
         if not cliente or not isinstance(cliente, Cliente):
@@ -117,7 +130,7 @@ class AlquilerServicio:
 
         return reserva
 
-    def finalizar_reserva(self, reserva_id: int, km_recorridos=0, retraso_dias=0,
+    def finalizar_reserva(self, reserva_id: UUID, km_recorridos=0, retraso_dias=0,
                           combustible_correcto=True, metodo_pago="Tarjeta"):
         # Finalizamos una reserva activa y registramos el pago
         reserva = self.reservas.get(reserva_id)
@@ -145,7 +158,7 @@ class AlquilerServicio:
         }
 
     # ---------- MANTENIMIENTOS ----------
-    def registrar_mantenimiento(self, vehiculo_id: int, motivo: str,
+    def registrar_mantenimiento(self, vehiculo_id: UUID, motivo: str,
                                 fecha_inicio: str, fecha_fin: str,
                                 coste: float, tipo: str = "REVISIÓN"):
         # Registramos un nuevo mantenimiento y cambiamos el estado del vehículo
@@ -157,7 +170,7 @@ class AlquilerServicio:
         self.mantenimientos[mantenimiento.id] = mantenimiento
         return mantenimiento
 
-    def finalizar_mantenimiento(self, mantenimiento_id: int):
+    def finalizar_mantenimiento(self, mantenimiento_id: UUID):
         # Marcamos un mantenimiento como completado
         mantenimiento = self.mantenimientos.get(mantenimiento_id)
         if not mantenimiento:
