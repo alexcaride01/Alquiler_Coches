@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, EmailStr
+from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from pydantic import BaseModel, EmailStr, Field
+
+from jose import JWTError, jwt
+from passlib.context import CryptContext
 
 from services.AlquilerServicio import AlquilerServicio
 from models.Usuario import Usuario, Cliente, Administrador
@@ -15,13 +19,105 @@ from models.Sucursal import Sucursal
 from models.Tarifa import Tarifa
 from models.Mantenimiento import Mantenimiento
 
+# ---------------------- CONFIGURACIÓN JWT Y SEGURIDAD ---------------------- #
+
+# Clave secreta para firmar los tokens JWT (cambiar en producción)
+SECRET_KEY = "clave_secreta_alquiler_coches_2025"
+# Algoritmo de encriptación para JWT
+ALGORITHM = "HS256"
+# Tiempo de expiración del token de acceso en minutos
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+# Configuración de hashing con bcrypt para las contraseñas
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Esquema OAuth2 para autenticación basada en tokens
+# tokenUrl indica el endpoint donde el cliente obtiene el token
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+# Creamos la instancia de FastAPI
 app = FastAPI(title="Sistema de Alquiler de Coches API")
+
+# Creamos la instancia del servicio de alquiler
 alquiler_service = AlquilerServicio()
+
+# ---------------------- FUNCIONES AUXILIARES DE SEGURIDAD ---------------------- #
+
+def hash_password(password: str) -> str:
+    password_cortada = password[:72]
+    print("DEBUG password:", password, "len:", len(password))
+    print("DEBUG cortada:", password_cortada, "len:", len(password_cortada))
+    return pwd_context.hash(password_cortada)
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    # Aplicamos el mismo corte antes de verificar
+    plain_cortada = plain_password[:72]
+    return pwd_context.verify(plain_cortada, hashed_password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    # Verifica que una contraseña en texto plano coincida con su hash
+    return pwd_context.verify(plain_password, hashed_password)
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    # Crea un token JWT con los datos del usuario y tiempo de expiración
+    to_encode = data.copy()
+    # Calculamos la fecha de expiración
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    # Añadimos la fecha de expiración al payload
+    to_encode.update({"exp": expire})
+    # Codificamos y firmamos el token JWT
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+async def get_current_user(token: str = Depends(oauth2_scheme)) -> Usuario:
+    # Obtiene el usuario actual decodificando y validando el token JWT
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="No se pudieron validar las credenciales",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    try:
+        # Decodificamos el token JWT usando la clave secreta
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        # Extraemos el email del payload (almacenado en el campo "sub")
+        email: str = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+    except JWTError:
+        # Si hay error al decodificar, lanzamos excepción
+        raise credentials_exception
+    
+    # Buscamos el usuario por email en la base de datos
+    usuario = alquiler_service.obtener_usuario_por_email(email)
+    if usuario is None:
+        raise credentials_exception
+    return usuario
 
 # ---------------------- SCHEMAS ---------------------- #
 
+# ------ AUTENTICACIÓN ------ #
+class Token(BaseModel):
+    # Esquema para la respuesta del token de autenticación
+    access_token: str
+    token_type: str
+
+class UsuarioRegister(BaseModel):
+    # Esquema para registrar un nuevo usuario con contraseña
+    nombre: str
+    email: EmailStr
+    password: str = Field(min_length=4)
+    tipo: str
+    licencia: Optional[str] = None
+    direccion: Optional[str] = None
+
 # ------ USUARIOS ------ #
 class UsuarioCreate(BaseModel):
+    # Esquema para crear un nuevo usuario (legacy, sin contraseña)
     nombre: str
     email: EmailStr
     tipo: str
@@ -29,9 +125,10 @@ class UsuarioCreate(BaseModel):
     direccion: Optional[str] = None
 
 class UsuarioRead(BaseModel):
+    # Esquema para leer/devolver información de un usuario
     id: UUID
     nombre: str
-    email: EmailStr
+    email: str
     es_admin: bool
 
 # ------ VEHÍCULOS ------ #
@@ -144,54 +241,139 @@ class MantenimientoRead(BaseModel):
     coste: float
     tipo: str
 
-# ---------------------- ENDPOINTS ---------------------- #
+# ---------------------- ENDPOINTS DE AUTENTICACIÓN ---------------------- #
 
-# ------ USUARIOS ------ #
-@app.post("/usuarios", response_model=UsuarioRead)
-def crear_usuario(datos: UsuarioCreate) -> UsuarioRead:
+@app.post("/register", response_model=UsuarioRead, status_code=201)
+def registrar_usuario(datos: UsuarioRegister) -> UsuarioRead:
+    # Endpoint para registrar un nuevo usuario con contraseña hasheada
     try:
+        # Hasheamos la contraseña antes de guardarla
+        password_hash = hash_password(datos.password)
+        
+        # Registramos el usuario usando el servicio
         usuario = alquiler_service.registrar_usuario(
             tipo=datos.tipo,
             nombre=datos.nombre,
-            email=str(datos.email),
+            email=datos.email,
+            password=password_hash,
             licencia=datos.licencia,
-            direccion=datos.direccion,
+            direccion=datos.direccion
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        
+        # Devolvemos el usuario creado en formato UsuarioRead
+        return UsuarioRead(
+            id=usuario.id,
+            nombre=usuario.nombre,
+            email=usuario.email,
+            es_admin=usuario.is_admin()
+        )
+    except ValueError as e:
+        # Si hay un error de validación, devolvemos un error 400
+        raise HTTPException(status_code=400, detail=str(e))
 
-    return UsuarioRead(
-        id=usuario.id,
-        nombre=usuario.nombre,
-        email=usuario.email,
-        es_admin=usuario.is_admin(),
+@app.post("/token", response_model=Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    # Endpoint de autenticación que devuelve un token JWT
+    # El cliente envía username (email) y password para obtener el token
+    
+    # Buscamos el usuario por email (el campo username del form contiene el email)
+    usuario = alquiler_service.obtener_usuario_por_email(form_data.username)
+    
+    # Verificamos que el usuario existe y la contraseña es correcta
+    if not usuario or not verify_password(form_data.password, usuario.password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Email o contraseña incorrectos",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Creamos el token JWT con el email del usuario
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": usuario.email}, expires_delta=access_token_expires
     )
+    
+    # Devolvemos el token de acceso
+    return {"access_token": access_token, "token_type": "bearer"}
 
-@app.get("/usuarios", response_model=list[UsuarioRead])
-def listar_usuarios() -> list[UsuarioRead]:
-    usuarios = alquiler_service.usuarios.values()
+# ---------------------- ENDPOINTS DE USUARIOS ---------------------- #
+
+@app.post("/usuarios", response_model=UsuarioRead, status_code=201)
+def crear_usuario(datos: UsuarioCreate) -> UsuarioRead:
+    # Endpoint legacy para crear usuario sin contraseña (deprecado)
+    try:
+        # Usamos una contraseña por defecto para mantener compatibilidad
+        password_hash = hash_password("default123")
+        
+        # Registramos el usuario usando el servicio
+        usuario = alquiler_service.registrar_usuario(
+            tipo=datos.tipo,
+            nombre=datos.nombre,
+            email=datos.email,
+            password=password_hash,
+            licencia=datos.licencia,
+            direccion=datos.direccion
+        )
+        
+        # Devolvemos el usuario creado en formato UsuarioRead
+        return UsuarioRead(
+            id=usuario.id,
+            nombre=usuario.nombre,
+            email=usuario.email,
+            es_admin=usuario.is_admin()
+        )
+    except ValueError as e:
+        # Si hay un error de validación, devolvemos un error 400
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/usuarios/{usuario_id}", response_model=UsuarioRead)
+async def obtener_usuario(
+    usuario_id: UUID,
+    current_user: Usuario = Depends(get_current_user)
+) -> UsuarioRead:
+    # Endpoint PROTEGIDO para obtener un usuario específico por ID
+    # Requiere autenticación: el usuario debe enviar un token válido
+    try:
+        # Obtenemos el usuario del servicio
+        usuario = alquiler_service.obtener_usuario(usuario_id)
+        
+        # Devolvemos el usuario en formato UsuarioRead
+        return UsuarioRead(
+            id=usuario.id,
+            nombre=usuario.nombre,
+            email=usuario.email,
+            es_admin=usuario.is_admin()
+        )
+    except ValueError as e:
+        # Si no existe, devolvemos un error 404
+        raise HTTPException(status_code=404, detail=str(e))
+
+@app.get("/usuarios", response_model=List[UsuarioRead])
+def listar_usuarios() -> List[UsuarioRead]:
+    # Endpoint para listar todos los usuarios
+    # Obtenemos todos los usuarios del servicio
+    usuarios = alquiler_service.listar_usuarios()
+    
+    # Convertimos cada usuario al formato UsuarioRead
     return [
         UsuarioRead(
             id=u.id,
             nombre=u.nombre,
             email=u.email,
-            es_admin=u.is_admin(),
+            es_admin=u.is_admin()
         )
         for u in usuarios
     ]
 
-@app.get("/usuarios/{usuario_id}", response_model=UsuarioRead)
-def obtener_usuario(usuario_id: UUID) -> UsuarioRead:
-    try:
-        usuario = alquiler_service.obtener_usuario(usuario_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-
+@app.get("/me", response_model=UsuarioRead)
+async def obtener_usuario_actual(current_user: Usuario = Depends(get_current_user)):
+    # Endpoint PROTEGIDO para obtener información del usuario autenticado
+    # Devuelve los datos del usuario que hizo la petición
     return UsuarioRead(
-        id=usuario.id,
-        nombre=usuario.nombre,
-        email=usuario.email,
-        es_admin=usuario.is_admin(),
+        id=current_user.id,
+        nombre=current_user.nombre,
+        email=current_user.email,
+        es_admin=current_user.is_admin()
     )
 
 # ------ SUCURSALES ------ #
@@ -247,7 +429,12 @@ def obtener_sucursal(sucursal_id: UUID) -> SucursalRead:
 
 # ------ VEHÍCULOS ------ #
 @app.post("/vehiculos", response_model=VehiculoRead)
-def crear_vehiculo(datos: VehiculoCreate) -> VehiculoRead:
+async def crear_vehiculo(
+    datos: VehiculoCreate,
+    current_user: Usuario = Depends(get_current_user)
+) -> VehiculoRead:
+    # Endpoint PROTEGIDO para crear un nuevo vehículo
+    # Requiere autenticación: solo usuarios autenticados pueden crear vehículos
     try:
         sucursal = alquiler_service.sucursales.get(datos.sucursal_id)
         if not sucursal:
@@ -298,14 +485,20 @@ def obtener_vehiculo(vehiculo_id: UUID) -> VehiculoRead:
 
     return _vehiculo_to_read(vehiculo)
 
-@app.delete("/vehiculos/{vehiculo_id}")
-def eliminar_vehiculo(vehiculo_id: UUID):
-    vehiculo = alquiler_service.vehiculos.get(vehiculo_id)
-    if not vehiculo:
-        raise HTTPException(status_code=404, detail="Vehículo no encontrado.")
-    
-    del alquiler_service.vehiculos[vehiculo_id]
-    return {"mensaje": "Vehículo eliminado correctamente."}
+@app.delete("/vehiculos/{vehiculo_id}", status_code=204)
+async def eliminar_vehiculo(
+    vehiculo_id: UUID,
+    current_user: Usuario = Depends(get_current_user)
+) -> None:
+    # Endpoint PROTEGIDO para eliminar un vehículo del inventario
+    # Requiere autenticación: solo usuarios autenticados pueden eliminar vehículos
+    try:
+        vehiculo = alquiler_service.vehiculos.get(vehiculo_id)
+        if not vehiculo:
+            raise ValueError("Vehículo no encontrado.")
+        del alquiler_service.vehiculos[vehiculo_id]
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 # ------ TARIFAS ------ #
 @app.post("/tarifas", response_model=TarifaRead)

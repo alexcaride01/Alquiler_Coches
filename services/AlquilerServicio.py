@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict
+from typing import Dict, Optional
 from uuid import UUID
 
 from models.Usuario import Usuario, Cliente, Administrador
@@ -23,14 +23,20 @@ class AlquilerServicio:
         self.mantenimientos: Dict[UUID, Mantenimiento] = {}  # UUID -> Mantenimiento
 
     # ---------- USUARIOS ----------
-    def registrar_usuario(self, tipo: str, nombre: str, email: str, licencia=None, direccion=None):
+    def registrar_usuario(self, tipo: str, nombre: str, email: str, password: str, licencia=None, direccion=None):
         # Registramos un nuevo cliente o administrador
+        
+        # Verificamos que no exista un usuario duplicado por email
+        for usuario in self.usuarios.values():
+            if usuario.email.lower() == email.lower():
+                raise ValueError("Ya existe un usuario con ese email.")
+        
         if tipo.lower() == "cliente":
             if not licencia or not direccion:
                 raise ValueError("El cliente debe tener licencia y dirección.")
-            usuario = Cliente(nombre, email, licencia, direccion)
+            usuario = Cliente(nombre, email, password, licencia, direccion)
         elif tipo.lower() in ("admin", "administrador"):
-            usuario = Administrador(nombre, email)
+            usuario = Administrador(nombre, email, password)
         else:
             raise ValueError("Tipo de usuario no válido. Usa 'cliente' o 'admin'.")
 
@@ -43,6 +49,17 @@ class AlquilerServicio:
         if not usuario:
             raise ValueError("Usuario no encontrado.")
         return usuario
+
+    def obtener_usuario_por_email(self, email: str) -> Optional[Usuario]:
+        # Buscamos un usuario por email (necesario para autenticación)
+        for usuario in self.usuarios.values():
+            if usuario.email.lower() == email.lower():
+                return usuario
+        return None
+
+    def listar_usuarios(self):
+        # Devolvemos la lista de todos los usuarios registrados
+        return list(self.usuarios.values())
 
     # ---------- SUCURSALES ----------
     def agregar_sucursal(self, nombre: str, direccion: str, telefono: str):

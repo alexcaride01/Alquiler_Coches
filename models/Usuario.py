@@ -5,19 +5,24 @@ from uuid import uuid4, UUID
 class Usuario:
     # Clase base que representa a cualquier usuario del sistema de alquiler. Aquí guardamos la información general y el comportamiento común a clientes y administradores.
 
-    def __init__(self, nombre: str, email: str):
+    def __init__(self, nombre: str, email: str, password: str):
         # Asignamos un identificador único automáticamente
         self.id: UUID = uuid4()
 
         # Guardamos los datos básicos del usuario
         self.nombre = nombre.strip()
         self.email = email.strip()
+        # Guardamos la contraseña (ya viene hasheada desde el servicio)
+        self.password = password
 
         # Validamos que los datos sean correctos
         if not self.nombre:
             raise ValueError("El nombre no puede estar vacío.")
         if "@" not in self.email:
             raise ValueError("El email debe ser válido.")
+        # Validamos que la contraseña no esté vacía
+        if not password:
+            raise ValueError("La contraseña no puede estar vacía.")
 
     def is_admin(self) -> bool:
         # Indicamos si este usuario es un administrador (por defecto, no lo es)
@@ -34,9 +39,9 @@ class Cliente(Usuario):
     Hereda de Usuario e incorpora datos adicionales como la licencia y dirección.
     """
 
-    def __init__(self, nombre: str, email: str, licencia: str, direccion: str):
-        # Llamamos al constructor de Usuario para reutilizar su lógica
-        super().__init__(nombre, email)
+    def __init__(self, nombre: str, email: str, password: str, licencia: str, direccion: str):
+        # Llamamos al constructor de Usuario para reutilizar su lógica (ahora incluye password)
+        super().__init__(nombre, email, password)
 
         # Guardamos los datos específicos del cliente
         self.licencia = licencia.strip()
@@ -65,9 +70,9 @@ class Administrador(Usuario):
     Este tipo de usuario puede gestionar vehículos, tarifas o mantenimientos.
     """
 
-    def __init__(self, nombre: str, email: str):
-        # Reutilizamos el constructor de Usuario
-        super().__init__(nombre, email)
+    def __init__(self, nombre: str, email: str, password: str):
+        # Reutilizamos el constructor de Usuario (ahora incluye password)
+        super().__init__(nombre, email, password)
 
     def is_admin(self) -> bool:
         # En este caso, siempre devolvemos True
